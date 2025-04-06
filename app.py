@@ -17,6 +17,8 @@ class Cliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
     direccion = db.Column(db.String(200), nullable=False)
+    def __repr__(self):
+        return f'<Cliente {self.nombre}>'
 
 # Modelo para las facturas
 class Factura(db.Model):
