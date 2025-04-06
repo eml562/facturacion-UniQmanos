@@ -1,69 +1,101 @@
-import os
-print("Directorio de trabajo:", os.getcwd())
 
-from flask import Flask, render_template, request, redirect, url_for
-from flask_sqlalchemy import SQLAlchemy
-import pandas as pd
+from flask import Flask, render_template_string, request, send_file, redirect, url_for
+from fpdf import FPDF
+import os
+from datetime import datetime
 
 app = Flask(__name__)
+clients = {}
 
-# Configuración de la base de datos
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+INVOICE_FOLDER = "invoices"
+os.makedirs(INVOICE_FOLDER, exist_ok=True)
 
-# Modelo para los clientes
-class Cliente(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
-    direccion = db.Column(db.String(200), nullable=False)
-    facturas = db.relationship('Factura', backref='cliente', lazy=True)  # Relación con las facturas
-    
-    def __repr__(self):
-        return f'<Cliente {self.nombre}>'
+HTML_TEMPLATE = """
+<!doctype html>
+<title>Facturación Médica</title>
+<h2>Registrar Cliente</h2>
+<form method=post action="/add_client">
+  Nombre: <input type=text name=name required>
+  <br>
+  DNI: <input type=text name=dni required>
+  <br>
+  Dirección: <input type=text name=address required>
+  <br><br>
+  <input type=submit value=Registrar>
+</form>
 
-# Modelo para las facturas
-class Factura(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    cliente_id = db.Column(db.Integer, db.ForeignKey('cliente.id'), nullable=False)
-    fecha = db.Column(db.String(100), nullable=False)
-    monto = db.Column(db.Float, nullable=False)
-    retencion = db.Column(db.Float, nullable=False)
+<h2>Generar Factura</h2>
+<form method=post action="/generate_invoice">
+  Cliente:
+  <select name=client required>
+    {% for dni, data in clients.items() %}
+      <option value="{{ dni }}">{{ data['name'] }} ({{ dni }})</option>
+    {% endfor %}
+  </select>
+  <br>
+  Descripción: <input type=text name=description required>
+  <br>
+  Importe (€): <input type=number name=amount step="0.01" required>
+  <br><br>
+  <input type=submit value="Generar Factura">
+</form>
 
-# Ruta para la página principal
-@app.route('/')
+<h2>Facturas Generadas</h2>
+<ul>
+{% for file in files %}
+  <li><a href="/invoices/{{ file }}">{{ file }}</a></li>
+{% endfor %}
+</ul>
+"""
+
+@app.route("/")
 def index():
-    clientes = Cliente.query.all()
-    return render_template('index.html', clientes=clientes)
+    files = os.listdir(INVOICE_FOLDER)
+    return render_template_string(HTML_TEMPLATE, clients=clients, files=files)
 
-# Ruta para registrar clientes
-@app.route('/registrar_cliente', methods=['POST'])
-def registrar_cliente():
-    if request.method == 'POST':
-        nombre = request.form['nombre']
-        direccion = request.form['direccion']
-        nuevo_cliente = Cliente(nombre=nombre, direccion=direccion)
-        db.session.add(nuevo_cliente)
-        db.session.commit()
-        return redirect(url_for('index'))
+@app.route("/add_client", methods=["POST"])
+def add_client():
+    name = request.form["name"]
+    dni = request.form["dni"]
+    address = request.form["address"]
+    clients[dni] = {"name": name, "address": address}
+    return redirect(url_for('index'))
 
-# Ruta para generar factura
-@app.route('/generar_factura/<int:cliente_id>', methods=['POST'])
-def generar_factura(cliente_id):
-    if request.method == 'POST':
-        fecha = request.form['fecha']
-        monto = float(request.form['monto'])
-        retencion = monto * 0.15  # 15% de retención
-        nueva_factura = Factura(cliente_id=cliente_id, fecha=fecha, monto=monto, retencion=retencion)
-        db.session.add(nueva_factura)
-        db.session.commit()
-        return redirect(url_for('index'))
+@app.route("/generate_invoice", methods=["POST"])
+def generate_invoice():
+    dni = request.form["client"]
+    description = request.form["description"]
+    amount = float(request.form["amount"])
+    client = clients[dni]
 
-if __name__ == '__main__':
-    with app.app_context():
-        try:
-            db.create_all()  # Crear todas las tablas si no existen
-            print("Tablas creadas exitosamente.")
-        except Exception as e:
-            print(f"Error al crear las tablas: {e}")
-    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    filename = f"Factura_{client['name'].replace(' ', '_')}_{date_str}.pdf"
+    filepath = os.path.join(INVOICE_FOLDER, filename)
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+
+    pdf.cell(200, 10, txt="Factura Médica", ln=True, align='C')
+    pdf.ln(10)
+    pdf.cell(200, 10, txt=f"Fecha: {date_str}", ln=True)
+    pdf.cell(200, 10, txt=f"Cliente: {client['name']}", ln=True)
+    pdf.cell(200, 10, txt=f"DNI: {dni}", ln=True)
+    pdf.cell(200, 10, txt=f"Dirección: {client['address']}", ln=True)
+    pdf.ln(10)
+    pdf.cell(200, 10, txt=f"Concepto: {description}", ln=True)
+    pdf.cell(200, 10, txt=f"Importe bruto: {amount:.2f} €", ln=True)
+    irpf = amount * 0.15
+    total = amount - irpf
+    pdf.cell(200, 10, txt=f"Retención IRPF (15%): -{irpf:.2f} €", ln=True)
+    pdf.cell(200, 10, txt=f"Importe neto: {total:.2f} €", ln=True)
+
+    pdf.output(filepath)
+    return redirect(url_for('index'))
+
+@app.route("/invoices/<filename>")
+def get_invoice(filename):
+    return send_file(os.path.join(INVOICE_FOLDER, filename), as_attachment=True)
+
+if __name__ == "__main__":
+    app.run(port=8080)
