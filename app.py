@@ -1,3 +1,6 @@
+import os
+print("Directorio de trabajo:", os.getcwd())
+
 from flask import Flask, render_template, request, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 import pandas as pd
@@ -53,5 +56,6 @@ def generar_factura(cliente_id):
         return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    db.create_all()  # Crear tablas en la base de datos
-    app.run(debug=True)
+    with app.app_context():
+        db.create_all()  # Crear todas las tablas si no existen
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
