@@ -1,0 +1,9 @@
+services:
+- tuype: web
+name: facturacion-flask
+env: python
+buildCCommand: ""
+startCommand: gunicorn app:app
+envVars:
+-key: FLASK_ENV
+value: production
