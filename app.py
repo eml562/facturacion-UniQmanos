@@ -61,5 +61,9 @@ def generar_factura(cliente_id):
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()  # Crear todas las tablas si no existen
+        try:
+            db.create_all()  # Crear todas las tablas si no existen
+            print("Tablas creadas exitosamente.")
+        except Exception as e:
+            print(f"Error al crear las tablas: {e}")
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
