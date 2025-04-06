@@ -1,5 +1,4 @@
-flask
-flask_sqlalchemy
-pandas
-xlsxwriter
-gunicorn
+Flask==2.0.1
+flask_sqlalchemy==2.5.1
+fpdf==1.7.2
+
