@@ -98,4 +98,4 @@ def get_invoice(filename):
     return send_file(os.path.join(INVOICE_FOLDER, filename), as_attachment=True)
 
 if __name__ == "__main__":
-    app.run(port=8080)
+app.run(port=8080, debug=True)
